@@ -757,7 +757,7 @@ runs:
           KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
           if [ -z "$SUSFS_INPUT" ]; then
             # use kernel-specific default
-            SUSFS_BRANCH="84c8fd6929c0f9a0cdd78f707599b6d76f415d37"
+            SUSFS_BRANCH="${DEFAULT_SUSFS[$KERNEL_KEY]:-gki-android15-6.6}"
             echo "ℹ️  Using default SUSFS branch for $KERNEL_KEY: $SUSFS_BRANCH"
           else
             # 40-char hash or branch/commit passed directly
@@ -784,30 +784,39 @@ runs:
               aria_log_flags="--summary-interval=5" # Show progress every 5s in debug
           fi
           
-          local aria2_headers=(
-            "--header=User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            "--header=Accept: */*"
-            "--header=Connection: keep-alive"
+          local user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          local aria2_args=(
+            --user-agent="$user_agent"
+            --header "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,application/octet-stream,*/*;q=0.8"
+            --header "Accept-Language: en-US,en;q=0.9"
+            --header "Sec-Fetch-Dest: document"
+            --header "Sec-Fetch-Mode: navigate"
+            --header "Sec-Fetch-Site: none"
+            --header "Sec-Fetch-User: ?1"
+            --header "Upgrade-Insecure-Requests: 1"
           )
           
           local download_url=""
           if [[ "$url" == *"github.com"* ]]; then
               download_url="${url%.git}/archive/refs/heads/${branch}.tar.gz"
           elif [[ "$url" == *"gitlab.com"* ]]; then
-              download_url="${url%.git}/-/archive/${branch}/${repo_name}-${branch}.tar.gz"
-              # wilden: gitlab archive URLs are Cloudflare-challenged today; use our mirror
-              if [ "$repo_name" = "susfs4ksu" ]; then
-                download_url="https://github.com/BUSHIGEMENNI/OnePlus_KernelSU_SUSFS/releases/download/toolchain-cache/susfs-v2.1.0.tar.gz"
-              fi
+              local project_path=$(echo "$url" | sed -E 's#^https?://gitlab\.com/##; s#\.git$##; s#/#%2F#g')
+              download_url="https://gitlab.com/api/v4/projects/${project_path}/repository/archive.tar.gz?sha=${branch}"
           else
               echo "::error::Unsupported host: $url"
               return 1
           fi
           
           while [ $attempt -le $max_attempts ]; do
+              local conn=1
+              case $attempt in
+                1) conn=16 ;;
+                2) conn=4 ;;
+                *) conn=1 ;;
+              esac
               echo " Attempt $attempt/$max_attempts: High-speed fetch for $repo_name ($branch)"
               
-              if aria2c -x16 -s16 -j16 -k1M --retry-wait=2 --max-tries=5 -d "/dev/shm" -o "$archive_name" --allow-overwrite=true "${aria2_headers[@]}" $aria_log_flags "$download_url"; then
+              if aria2c -x"$conn" -s"$conn" -j16 -k1M --retry-wait=2 --max-tries=5 -d "/dev/shm" -o "$archive_name" --allow-overwrite=true "${aria2_args[@]}" $aria_log_flags "$download_url"; then
                   mkdir -p "$repo_name"
                   if tar -I "pigz -p $nproc -b 256" -x --record-size=1M -f "$shm_path" -C "$repo_name" --strip-components=1 --no-same-owner; then
                       echo "✅ Success: $repo_name synced"
@@ -858,8 +867,7 @@ runs:
           return 1
         }
         
-        retry_clone "https://github.com/WildKernels/kernel_patches.git" "main" "0"
-        git -C kernel_patches checkout f569cc9e69d6
+        retry_clone "https://github.com/WildKernels/kernel_patches.git" "main" "1"
         
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
@@ -1023,10 +1031,10 @@ runs:
           "v1.5.8")
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               patch -p1 --forward --fuzz=3 < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
-              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" || echo "wilden: fix patch missing/failed, skipped"
-              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch" || echo "wilden: fix patch missing/failed, skipped"
-              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch" || echo "wilden: fix patch missing/failed, skipped"
-              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch"
+              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch"
+              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch"
+              patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch"
             else
               cd "$KSU_FOLDER"
               patch -p1 --forward --fuzz=3 < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
@@ -1038,9 +1046,9 @@ runs:
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
               for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
                 echo "Patching file: $file.c with fix_$file.c.patch"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
               done
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
             else
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
@@ -1052,19 +1060,19 @@ runs:
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
               for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
                 echo "Patching file: $file with fix_$file.patch"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
               done
               echo "Patching Hook Mode!"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
               echo "Patching KSU_TOOLKIT Support for SusFS kernel!"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
               if [ "$KSUVER" -le 33095 ]; then
                 echo "Patching Multi-manager Support for SusFS kernel!"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_manager.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_manager.patch"
               fi
               if [ "$KSUVER" -ge 33068 ] && [ "$KSUVER" -lt 33070 ]; then
                 echo "Patching Multi-manager sepolicy Support for SusFS kernel!"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_sepolicy_fix.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_sepolicy_fix.patch"
               fi
             else
               cd "$KSU_FOLDER"
@@ -1077,37 +1085,37 @@ runs:
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
               for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
                 echo "Patching file: $file with fix_$file.patch"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
               done
               echo "Patching Hook Mode!"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
               echo "Patching KSU_TOOLKIT Support for SusFS kernel!"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
               if [ "$KSUVER" -le 33095 ]; then
                 echo "Patching Multi-manager Support for SusFS kernel!"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_manager.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_manager.patch"
               fi
               if [ "$KSUVER" -ge 33068 ] && [ "$KSUVER" -lt 33070 ]; then
                 echo "Patching Multi-manager sepolicy Support for SusFS kernel!"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_sepolicy_fix.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_sepolicy_fix.patch"
               fi
             else
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
             fi
             ;;
-          "v2.2.0")
+          "v2.2.0"|"v2.3.0")
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               cd "$KSUN_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
               for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
                 echo "Patching file: $file with fix_$file.patch"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch" || echo "wilden: fix patch missing/failed, skipped"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
               done
               echo "Patching Hook Mode!"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
               echo "Patching KSU_TOOLKIT Support for SusFS kernel!"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch" || echo "wilden: fix patch missing/failed, skipped"
+              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
             else
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
@@ -2000,10 +2008,7 @@ runs:
             exit 1
             ;;
         esac
-
-        # KEXEC for mainline handoff (wilden bring-up)
-        scripts/config --file "$OUT/.config" -e KEXEC -e KEXEC_FILE -d KEXEC_SIG -d KEXEC_SIG_FORCE
-        echo "CONFIG_KEXEC=y (wilden kexec handoff)"        
+        
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" olddefconfig
         
