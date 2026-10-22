@@ -757,7 +757,7 @@ runs:
           KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
           if [ -z "$SUSFS_INPUT" ]; then
             # use kernel-specific default
-            SUSFS_BRANCH="be7b7ef49a1e1b189c3abf00eacaa7ebdb4168c1"
+            SUSFS_BRANCH="84c8fd6929c0f9a0cdd78f707599b6d76f415d37"
             echo "ℹ️  Using default SUSFS branch for $KERNEL_KEY: $SUSFS_BRANCH"
           else
             # 40-char hash or branch/commit passed directly
@@ -797,7 +797,7 @@ runs:
               download_url="${url%.git}/-/archive/${branch}/${repo_name}-${branch}.tar.gz"
               # wilden: gitlab archive URLs are Cloudflare-challenged today; use our mirror
               if [ "$repo_name" = "susfs4ksu" ]; then
-                download_url="https://github.com/BUSHIGEMENNI/OnePlus_KernelSU_SUSFS/releases/download/toolchain-cache/susfs-be7b7ef4.tar.gz"
+                download_url="https://github.com/BUSHIGEMENNI/OnePlus_KernelSU_SUSFS/releases/download/toolchain-cache/susfs-v2.1.0.tar.gz"
               fi
           else
               echo "::error::Unsupported host: $url"
