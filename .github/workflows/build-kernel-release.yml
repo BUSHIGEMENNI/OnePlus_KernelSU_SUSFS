@@ -146,7 +146,7 @@ jobs:
               jq_filter="map(select(.os_version == \"A14\" or .os_version == \"A15\"))"
               ;;
             A16)
-              jq_filter="map(select(.os_version == \"A16\")) | map(select(.model == \"OP-PAD-2-PRO\"))"
+              jq_filter="map(select(.os_version == \"A16\"))"
               ;;
             A15)
               jq_filter="map(select(.os_version == \"A15\"))"
@@ -418,8 +418,6 @@ jobs:
               ($hashes_array[0]) as $hashes |
               [.[] | . + {susfs_resolved_hash: ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")}]
             ')
-          # wilden: force-pin susfs to the Aug-12 release state (branch tip today has moved)
-          merged_matrix=$(echo "$merged_matrix" | jq '.[] |= (.susfs_resolved_hash = "84c8fd6929c0f9a0cdd78f707599b6d76f415d37")')
           
           rm susfs_lookup_temp.json
           
