@@ -795,6 +795,10 @@ runs:
               download_url="${url%.git}/archive/refs/heads/${branch}.tar.gz"
           elif [[ "$url" == *"gitlab.com"* ]]; then
               download_url="${url%.git}/-/archive/${branch}/${repo_name}-${branch}.tar.gz"
+              # wilden: gitlab archive URLs are Cloudflare-challenged today; use our mirror
+              if [ "$repo_name" = "susfs4ksu" ]; then
+                download_url="https://github.com/BUSHIGEMENNI/OnePlus_KernelSU_SUSFS/releases/download/toolchain-cache/susfs-be7b7ef4.tar.gz"
+              fi
           else
               echo "::error::Unsupported host: $url"
               return 1
