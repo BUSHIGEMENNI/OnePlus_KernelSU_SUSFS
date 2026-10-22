@@ -867,7 +867,8 @@ runs:
           return 1
         }
         
-        retry_clone "https://github.com/WildKernels/kernel_patches.git" "f569cc9e69d6" "1"
+        retry_clone "https://github.com/WildKernels/kernel_patches.git" "main" "0"
+        git -C kernel_patches checkout f569cc9e69d6
         
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
