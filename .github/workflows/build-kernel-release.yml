@@ -412,14 +412,14 @@ jobs:
             }')
           
           echo "$susfs_hashes_json" > susfs_lookup_temp.json
-          # wilden: force-pin susfs to the Aug-12 release state (branch tip today has moved)
-          merged_matrix=$(echo "$merged_matrix" | jq '.[] |= (.susfs_resolved_hash = "be7b7ef49a1e1b189c3abf00eacaa7ebdb4168c1")')
           merged_matrix=$(echo "$merged_matrix" | jq \
             --slurpfile hashes_array susfs_lookup_temp.json \
             '
               ($hashes_array[0]) as $hashes |
               [.[] | . + {susfs_resolved_hash: ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")}]
             ')
+          # wilden: force-pin susfs to the Aug-12 release state (branch tip today has moved)
+          merged_matrix=$(echo "$merged_matrix" | jq '.[] |= (.susfs_resolved_hash = "be7b7ef49a1e1b189c3abf00eacaa7ebdb4168c1")')
           
           rm susfs_lookup_temp.json
           
