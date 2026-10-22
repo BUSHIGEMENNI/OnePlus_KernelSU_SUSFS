@@ -2008,6 +2008,10 @@ runs:
             exit 1
             ;;
         esac
+
+        # KEXEC for mainline handoff (wilden bring-up)
+        scripts/config --file "$OUT/.config" -e KEXEC -e KEXEC_FILE -d KEXEC_SIG -d KEXEC_SIG_FORCE
+        echo "CONFIG_KEXEC=y (wilden kexec handoff)"
         
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" olddefconfig
